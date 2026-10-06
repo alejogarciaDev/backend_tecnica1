@@ -1,0 +1,7 @@
+{
+  "id": "biblioteca",
+  "name": "Biblioteca Escolar",
+  "version": "1.0.0",
+  "description": "Módulo de gestión de catálogo e historial de préstamos de libros para la biblioteca escolar.",
+  "dependencies": ["auth"]
+}

@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches
+.pytest_cache/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads / Data
+data/archivos/*
+!data/archivos/.gitkeep
+
+# Docker volumes
+postgres_data/
+school_data/
+
+# Environment files
+.env
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

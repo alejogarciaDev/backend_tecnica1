@@ -1,0 +1,7 @@
+{
+  "id": "barcode",
+  "name": "Código de Barras",
+  "version": "1.0.0",
+  "description": "Filtra y valida los formatos de código de barras durante las entregas y devoluciones de herramientas.",
+  "dependencies": ["auth"]
+}

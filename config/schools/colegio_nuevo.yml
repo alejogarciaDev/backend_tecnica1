@@ -1,0 +1,106 @@
+school:
+  name: "Colegio Nuevo en Funcionamiento"
+  short_name: "Escuela"
+  slogan: "Educación y Tecnología"
+  domain: "colegionuevo.edu.ar"
+  logo: "/imagenes/logo-default.png"
+  favicon: "/imagenes/favicon.ico"
+  primary_color: "#1a3a5c"
+  secondary_color: "#e67e22"
+  font_family: "Segoe UI, sans-serif"
+  address: ""
+  phone: ""
+  email: ""
+  whatsapp:
+    bot_number: "+5491155556666"
+    api_token: "mock-token-nuevo"
+  modules:
+    panol: true
+    campus: true
+    alumnos: true
+    materias: true
+    archivos: true
+    notificaciones: true
+    biblioteca: true
+    profesores: true
+    oficina_alumnos: true
+  roles:
+    - name: superadmin
+      label: "Super Admin"
+      permissions: "*"
+    - name: admin
+      label: "Administrador"
+      permissions: ["*"]
+    - name: panol
+      label: "Pañolero"
+      permissions: ["users.list", "categories.*", "loans.*", "orders.*"]
+    - name: profesor
+      label: "Profesor"
+      permissions: ["tareas.*", "entregas.*", "materiales.*", "alumnos.list", "materias.*", "calificaciones.cargar", "calificaciones.list", "calificaciones.reportes"]
+    - name: alumno
+      label: "Alumno"
+      permissions: ["entregas.create", "misdocumentos.*", "calificaciones.ver", "horarios.ver", "boletines.ver"]
+    - name: oficina_alumnos
+      label: "Oficina Alumnos"
+      permissions: ["alumnos.*", "users.list", "archivos.*", "oficina.*"]
+    - name: bibliotecario
+      label: "Bibliotecario"
+      permissions: ["users.list", "biblioteca.*"]
+    - name: preceptor
+      label: "Preceptor"
+      permissions: ["alumnos.*", "materias.list", "calificaciones.aprobar", "calificaciones.list", "boletines.generar", "cursos.*"]
+    - name: secretaria
+      label: "Secretaría"
+      permissions: ["*"]
+  dashboards:
+    - id: admin
+      label: "Panel Admin"
+      url: "dashboard_admin.html"
+      roles: ["admin", "superadmin"]
+    - id: profesor
+      label: "Panel Profesor"
+      url: "dashboard_profesor.html"
+      roles: ["profesor", "admin", "superadmin"]
+    - id: alumno
+      label: "Panel Alumno"
+      url: "dashboard_alumno.html"
+      roles: ["alumno", "admin", "superadmin"]
+    - id: panol
+      label: "Panel Pañol"
+      url: "dashboard_panol.html"
+      roles: ["panol", "admin", "superadmin"]
+    - id: ofalumnos
+      label: "Panel Oficina Alumnos"
+      url: "dashboard_ofalumnos.html"
+      roles: ["oficina_alumnos", "admin", "superadmin"]
+    - id: biblioteca
+      label: "Panel Biblioteca"
+      url: "dashboard_biblioteca.html"
+      roles: ["bibliotecario", "admin", "superadmin"]
+    - id: preceptor
+      label: "Panel Preceptor"
+      url: "dashboard_preceptor.html"
+      roles: ["preceptor", "admin", "superadmin"]
+    - id: secretaria
+      label: "Panel Secretaría"
+      url: "dashboard_secretaria.html"
+      roles: ["secretaria", "admin", "superadmin"]
+  files:
+    max_size_mb: 100
+    allowed_types:
+      - "*/*"
+      - application/pdf
+      - image/jpeg
+      - image/png
+      - application/msword
+      - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    storage_path: "data/archivos"
+  login:
+    title: "Iniciar Sesión"
+    subtitle: "Ingrese sus credenciales"
+    background_color: "#f0f2f5"
+  footer:
+    text: "© {year} {school_name} - Todos los derechos reservados"
+    show_powered_by: true
+database:
+  url: "sqlite:///./sistema.db"

@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  # Base de Datos PostgreSQL dedicada para este colegio
+  postgres:
+    image: postgres:15-alpine
+    container_name: sigen-colegio-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sigen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sigen_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-sigen_colegio}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sigen} -d ${POSTGRES_DB:-sigen_colegio}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend FastAPI de la escuela
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sigen-colegio-backend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8001}:8001"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-sigen}:${POSTGRES_PASSWORD:-sigen_pass}@postgres:5432/${POSTGRES_DB:-sigen_colegio}
+      - SCHOOL_CONFIG_PATH=/app/config/school.default.yml
+      - ADMIN_NAME=${ADMIN_NAME:-Super Admin}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@colegio.edu}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - SECRET_KEY=${SECRET_KEY:-sigen_clave_secreta_produccion}
+      - PORT=8001
+      - CORS_ALLOWED_ORIGINS=*
+    volumes:
+      # Permite modificar el YAML del colegio desde el host en tiempo real
+      - ./config:/app/config
+      # Persistencia de archivos adjuntos y documentos
+      - school_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  school_data:
