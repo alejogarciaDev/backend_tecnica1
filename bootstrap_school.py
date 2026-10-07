@@ -40,6 +40,7 @@ def validate_yaml(config_path: str):
 
 def main():
     default_config = os.getenv("SCHOOL_CONFIG_PATH", "config/school.default.yml")
+    parser = argparse.ArgumentParser(description="Aprovisionar una nueva escuela e inicializar su base de datos y superadministrador.")
     parser.add_argument("config_path", nargs="?", default=default_config, help="Ruta al archivo YAML de configuración de la escuela (ej: config/school.default.yml)")
     parser.add_argument("--admin-name", help="Nombre del primer superadministrador", default=os.getenv("ADMIN_NAME"))
     parser.add_argument("--admin-email", help="Email del primer superadministrador", default=os.getenv("ADMIN_EMAIL"))
