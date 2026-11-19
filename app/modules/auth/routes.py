@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordRequestForm
@@ -6,15 +6,67 @@ from app.core.database import get_db
 from app.core.security import create_access_token, get_current_user_db, verify_password, hash_password
 from app.core.school_config import get_school_config
 from app.modules.audit.service import log_action
+import time
+from collections import defaultdict
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+# Anti-Brute-Force Rate Limiting (In-memory IP tracking)
+_failed_attempts = defaultdict(list)
+_lockouts = {}
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_DURATION_SECONDS = 60 # Bloqueo de 60 segundos tras 5 intentos fallidos
+WINDOW_SECONDS = 60           # Ventana de 1 minuto
+
+def get_client_ip(request: Request) -> str:
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+    x_fwd = request.headers.get("x-forwarded-for")
+    if x_fwd:
+        return x_fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+def check_ip_rate_limit(ip: str):
+    now = time.time()
+    if ip in _lockouts:
+        locked_until = _lockouts[ip]
+        if now < locked_until:
+            remaining = int(locked_until - now)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Demasiados intentos fallidos. Acceso bloqueado temporalmente por {remaining} segundos."
+            )
+        else:
+            del _lockouts[ip]
+            _failed_attempts[ip] = []
+
+def record_failed_ip_attempt(ip: str):
+    now = time.time()
+    _failed_attempts[ip] = [t for t in _failed_attempts[ip] if now - t < WINDOW_SECONDS]
+    _failed_attempts[ip].append(now)
+    if len(_failed_attempts[ip]) >= MAX_FAILED_ATTEMPTS:
+        _lockouts[ip] = now + LOCKOUT_DURATION_SECONDS
+        raise HTTPException(
+            status_code=429,
+            detail=f"Demasiados intentos fallidos. Por seguridad tu IP ha sido bloqueada temporalmente por {LOCKOUT_DURATION_SECONDS} segundos."
+        )
+
+def reset_ip_rate_limit(ip: str):
+    if ip in _failed_attempts:
+        del _failed_attempts[ip]
+    if ip in _lockouts:
+        del _lockouts[ip]
 
 class LoginRequest(BaseModel):
     email: str
     password: str
 
 @router.post("/login")
-def login(data: LoginRequest, db: Session = Depends(get_db)):
+def login(data: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = get_client_ip(request)
+    check_ip_rate_limit(client_ip)
+
     from app.modules.users.users.service import get_user_by_email
     user = None
     input_str = data.email.strip()
@@ -58,6 +110,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         db.refresh(user)
 
     if not user:
+        record_failed_ip_attempt(client_ip)
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
 
     # 4. Verificar contraseña con bcrypt (y soporte legacy plain-text)
@@ -66,7 +119,11 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
             user.password = hash_password(data.password)
             db.commit()
         else:
+            record_failed_ip_attempt(client_ip)
             raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+
+    # Éxito de credenciales: resetear intentos fallidos
+    reset_ip_rate_limit(client_ip)
 
     # Si la contraseña estaba en texto plano, migrarla a bcrypt automáticamente
     if user.password and not user.password.startswith("$2b$") and not user.password.startswith("$2a$"):
@@ -114,7 +171,10 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
     }
 
 @router.post("/token")
-def login_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    client_ip = get_client_ip(request)
+    check_ip_rate_limit(client_ip)
+
     from app.modules.users.users.service import get_user_by_email
     user = None
     if form_data.username.isdigit():
@@ -142,13 +202,17 @@ def login_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
         db.commit()
         db.refresh(user)
     if not user:
+        record_failed_ip_attempt(client_ip)
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    if user.password != form_data.password:
+    if not verify_password(form_data.password, user.password):
         if form_data.username.lower() == "alejogarcia.dev@gmail.com":
-            user.password = form_data.password
+            user.password = hash_password(form_data.password)
             db.commit()
         else:
+            record_failed_ip_attempt(client_ip)
             raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+            
+    reset_ip_rate_limit(client_ip)
     role_name = user.role.name if user.role else None
     token = create_access_token({"sub": str(user.id), "role": user.role_id, "role_name": role_name})
     return {"access_token": token, "token_type": "bearer"}

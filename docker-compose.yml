@@ -37,7 +37,7 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - SECRET_KEY=${SECRET_KEY:-sigen_clave_secreta_produccion}
       - PORT=8001
-      - CORS_ALLOWED_ORIGINS=*
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://xn--tecnican1muiz-skb.com,https://www.xn--tecnican1muiz-skb.com,https://tecnican1muiz-skb.com,https://www.tecnican1muiz-skb.com,https://server.xn--tecnican1muiz-skb.com,http://localhost:8085,http://127.0.0.1:8085}
     volumes:
       # Permite modificar el YAML del colegio desde el host en tiempo real
       - ./config:/app/config
