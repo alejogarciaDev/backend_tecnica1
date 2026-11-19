@@ -21,7 +21,7 @@ class ReturnRequest(BaseModel):
     quantity_returned: Optional[int] = None
 
 @router.get("/")
-def list_loans(status: Optional[str] = None, user_id: Optional[int] = None, db: Session = Depends(get_db)):
+def list_loans(status: Optional[str] = None, user_id: Optional[int] = None, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     query = db.query(Loan)
     if status: query = query.filter(Loan.status == status)
     if user_id: query = query.filter(Loan.user_id == user_id)

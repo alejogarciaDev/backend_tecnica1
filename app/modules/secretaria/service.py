@@ -23,13 +23,22 @@ def pre_registrar_alumno(db: Session, data: schemas.AlumnoPreRegistro, actor) ->
     if not dni_clean:
         raise HTTPException(status_code=400, detail="El DNI no puede estar vacío.")
 
+    # Parsear curso y división
+    raw_curso = (data.curso or data.curso_division or "1°").strip()
+    raw_division = (data.division or "").strip()
+    if not raw_division and " " in raw_curso:
+        parts = raw_curso.split()
+        raw_curso = parts[0]
+        raw_division = " ".join(parts[1:])
+    elif not raw_division:
+        raw_division = "1°"
+
     # Verificar si el alumno ya existe por DNI
     existing_alumno = db.query(Alumno).filter(Alumno.dni == dni_clean).first()
-    if existing_alumno:
-        raise HTTPException(status_code=409, detail=f"Ya existe un alumno registrado con el DNI {dni_clean}.")
 
-    # Generar contraseña temporal segura
-    temp_password = generate_temp_password(data.fecha_nacimiento, dni_clean)
+    # Generar contraseña temporal segura basada en fecha de nacimiento
+    fecha_nac = data.fecha_nacimiento or "2008-01-01"
+    temp_password = generate_temp_password(fecha_nac, dni_clean)
     hashed_password = hash_password(temp_password)
 
     # Rol del alumno: ESTRICTAMENTE ALUMNO
@@ -39,19 +48,17 @@ def pre_registrar_alumno(db: Session, data: schemas.AlumnoPreRegistro, actor) ->
     school_id = getattr(actor, "school_id", None)
 
     # Crear o enlazar usuario
-    user_email = f"{dni_clean}@mitecnica.edu.ar"
+    user_email = (data.correo_electronico or f"{dni_clean}@tecnica1.edu.ar").strip().lower()
     existing_user = db.query(User).filter(or_(User.dni == dni_clean, User.email == user_email)).first()
     if existing_user:
-        # Reutilizar usuario pero garantizar rol y flags
         user = existing_user
         user.name = f"{data.nombre.strip()} {data.apellido.strip()}"
         user.password = hashed_password
         user.role_id = alumno_role.id
         user.dni = dni_clean
-        user.fecha_nacimiento = data.fecha_nacimiento
-        user.must_change_password = True
-        user.account_status = "SIN_ACTIVAR"
-        user.identity_status = "NO_VERIFICADA"
+        user.fecha_nacimiento = fecha_nac
+        user.must_change_password = False
+        user.account_status = "ACTIVA"
     else:
         user = User(
             name=f"{data.nombre.strip()} {data.apellido.strip()}",
@@ -59,50 +66,73 @@ def pre_registrar_alumno(db: Session, data: schemas.AlumnoPreRegistro, actor) ->
             password=hashed_password,
             role_id=alumno_role.id,
             dni=dni_clean,
-            fecha_nacimiento=data.fecha_nacimiento,
+            fecha_nacimiento=fecha_nac,
             school_id=school_id,
-            must_change_password=True,
-            account_status="SIN_ACTIVAR",
-            identity_status="NO_VERIFICADA",
-            accepted_terms=False
+            must_change_password=False,
+            account_status="ACTIVA",
+            identity_status="VERIFICADA",
+            accepted_terms=True
         )
         db.add(user)
         db.flush()
 
-    # Crear registro Alumno con los 3 estados independientes
-    alumno = Alumno(
-        dni=dni_clean,
-        nombre=data.nombre.strip(),
-        apellido=data.apellido.strip(),
-        fecha_nacimiento=data.fecha_nacimiento,
-        curso=data.curso.strip(),
-        division=data.division.strip(),
-        turno=data.turno.strip(),
-        estado_academico=data.estado_academico or "REGULAR",
-        estado_cuenta="SIN_ACTIVAR",
-        estado_identidad="NO_VERIFICADA",
-        telefono=data.telefono,
-        folio=data.folio,
-        legajo=data.legajo,
-        grupo_taller=data.grupo_taller,
-        user_id=user.id,
-        school_id=school_id,
-        estado="Activo"
-    )
-    db.add(alumno)
+    # Sincronizar dashboards de alumno
+    from app.modules.users.users.service import _sync_user_dashboards
+    _sync_user_dashboards(db, user, ["alumno", "perfil"])
+
+    # Crear o actualizar registro Alumno
+    if existing_alumno:
+        alumno = existing_alumno
+        alumno.nombre = data.nombre.strip()
+        alumno.apellido = data.apellido.strip()
+        alumno.fecha_nacimiento = fecha_nac
+        alumno.curso = raw_curso
+        alumno.division = raw_division
+        alumno.turno = (data.turno or "Mañana").strip()
+        alumno.estado_academico = data.estado_academico or "REGULAR"
+        alumno.estado_cuenta = "ACTIVA"
+        alumno.estado = "Activo"
+        alumno.user_id = user.id
+    else:
+        alumno = Alumno(
+            dni=dni_clean,
+            nombre=data.nombre.strip(),
+            apellido=data.apellido.strip(),
+            fecha_nacimiento=fecha_nac,
+            curso=raw_curso,
+            division=raw_division,
+            turno=(data.turno or "Mañana").strip(),
+            estado_academico=data.estado_academico or "REGULAR",
+            estado_cuenta="ACTIVA",
+            estado_identidad="VERIFICADA",
+            telefono=data.telefono,
+            folio=data.folio,
+            legajo=data.legajo,
+            grupo_taller=data.grupo_taller,
+            user_id=user.id,
+            school_id=school_id,
+            estado="Activo"
+        )
+        db.add(alumno)
     db.flush()
 
     # Registrar historial académico inicial
-    historial = AlumnoHistorial(
-        alumno_id=alumno.id,
-        anio="2026",
-        curso=f"{data.curso} {data.division}".strip(),
-        repitio=False,
-        observaciones=f"Pre-registro Secretaría - Turno {data.turno}"
-    )
-    db.add(historial)
-    db.commit()
-    db.refresh(alumno)
+    historial = db.query(AlumnoHistorial).filter(AlumnoHistorial.alumno_id == alumno.id).first()
+    if not historial:
+        historial = AlumnoHistorial(
+            alumno_id=alumno.id,
+            anio="2026",
+            curso=f"{raw_curso} {raw_division}".strip(),
+            repitio=False,
+            observaciones=f"Alta Alumno Regular - Turno {data.turno or 'Mañana'}"
+        )
+        db.add(historial)
+    try:
+        db.commit()
+        db.refresh(alumno)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Error al guardar alumno: {str(e)}")
 
     # Registrar en auditoría
     log_action(

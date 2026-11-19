@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.security import get_current_user_db
 from .models import Curso
 from pydantic import BaseModel
 from typing import Optional, List
@@ -22,7 +23,7 @@ class CursoUpdate(BaseModel):
     preceptor_principal_id: Optional[int] = None
 
 @router.get("/")
-def list_cursos(db: Session = Depends(get_db)):
+def list_cursos(db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     cursos = db.query(Curso).all()
     res = []
     for c in cursos:
@@ -41,7 +42,7 @@ def list_cursos(db: Session = Depends(get_db)):
     return res
 
 @router.post("/")
-def create_curso(data: CursoCreate, db: Session = Depends(get_db)):
+def create_curso(data: CursoCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     nombre = data.nombre
     if not nombre and data.anio and data.division:
         nombre = f"{data.anio} {data.division}"
@@ -65,7 +66,7 @@ def create_curso(data: CursoCreate, db: Session = Depends(get_db)):
     return curso
 
 @router.put("/{curso_id}")
-def update_curso(curso_id: int, data: CursoUpdate, db: Session = Depends(get_db)):
+def update_curso(curso_id: int, data: CursoUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     curso = db.query(Curso).filter(Curso.id == curso_id).first()
     if not curso:
         raise HTTPException(status_code=404, detail="Curso no encontrado")

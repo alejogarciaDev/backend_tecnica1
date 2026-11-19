@@ -94,30 +94,30 @@ def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(
         db.add(OrderItem(order_id=order.id, tool_id=tool_id, quantity=item.quantity))
         total_tools += item.quantity
 
-    from app.modules.notifications.models import Notification
-    from app.modules.users.users.models import User
-    from app.modules.roles.models import Role
-
-    # 1. Notificación para el profesor solicitante
-    db.add(Notification(
-        user_id=user.id,
-        title="Pedido al Pañol Registrado",
-        message=f"Tu solicitud de {total_tools} herramientas ha sido enviada con éxito.",
-        type="success"
-    ))
-
-    # 2. Notificación para los pañoleros y administradores
     try:
+        from app.modules.notifications.models import Notification
+        from app.modules.users.users.models import User
+        from app.modules.users.roles.models import Role
+
+        # 1. Notificación para el solicitante
+        db.add(Notification(
+            user_id=user.id,
+            title="Pedido al Pañol Registrado",
+            message=f"Tu solicitud de {total_tools} herramientas ha sido enviada con éxito.",
+            type="success"
+        ))
+
+        # 2. Notificación para los pañoleros y administradores
         staff_users = db.query(User).join(User.role).filter(Role.name.in_(["panolero", "panol", "admin", "superadmin"])).all()
         for staff in staff_users:
             if staff.id != user.id:
                 db.add(Notification(
                     user_id=staff.id,
                     title="Nuevo Pedido al Pañol",
-                    message=f"El docente {user.name} realizó un nuevo pedido de {total_tools} herramientas.",
+                    message=f"El usuario {user.name} realizó un nuevo pedido de {total_tools} herramientas.",
                     type="info"
                 ))
-    except Exception as e:
+    except Exception:
         pass
 
     db.commit()

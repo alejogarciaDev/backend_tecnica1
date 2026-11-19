@@ -47,13 +47,23 @@ class FamiliarCreate(BaseModel):
     relacion: str
 
 class AlumnoCreate(BaseModel):
-    dni: str; nombre: str; apellido: str; folio: Optional[str] = None; legajo: Optional[str] = None
+    dni: str
+    nombre: str
+    apellido: str
+    folio: Optional[str] = None
+    legajo: Optional[str] = None
     telefono: Optional[str] = None
+    fecha_nacimiento: Optional[str] = None
+    curso: Optional[str] = None
+    division: Optional[str] = None
+    turno: Optional[str] = None
+    estado: Optional[str] = "Activo"
+    estado_academico: Optional[str] = "REGULAR"
     historial: list[HistorialCreate] = []
     familiares: list[FamiliarCreate] = []
 
 @router.get("/")
-def list_alumnos(anio: Optional[str] = None, tipo: Optional[str] = None, db: Session = Depends(get_db)):
+def list_alumnos(anio: Optional[str] = None, tipo: Optional[str] = None, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     query = db.query(Alumno)
     
     if anio:
@@ -216,18 +226,54 @@ def list_alumnos(anio: Optional[str] = None, tipo: Optional[str] = None, db: Ses
     return res
 
 @router.get("/{dni}")
-def get_alumno(dni: str, db: Session = Depends(get_db)):
+def get_alumno(dni: str, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     return db.query(Alumno).filter(Alumno.dni == dni).first()
 
 @router.post("/")
-def create_alumno(data: AlumnoCreate, db: Session = Depends(get_db)):
-    alumno = Alumno(dni=data.dni, nombre=data.nombre, apellido=data.apellido, folio=data.folio, legajo=data.legajo, telefono=data.telefono)
-    db.add(alumno); db.flush()
+def create_alumno(data: AlumnoCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
+    dni_clean = str(data.dni).strip()
+    existing = db.query(Alumno).filter(Alumno.dni == dni_clean).first()
+    
+    estado_final = data.estado or ("Egresado" if data.estado_academico == "EGRESADO" else "Activo")
+    estado_acad_final = data.estado_academico or ("EGRESADO" if estado_final.lower() == "egresado" else "REGULAR")
+    
+    if existing:
+        existing.nombre = data.nombre
+        existing.apellido = data.apellido
+        if data.folio is not None: existing.folio = data.folio
+        if data.legajo is not None: existing.legajo = data.legajo
+        if data.telefono is not None: existing.telefono = data.telefono
+        if data.fecha_nacimiento is not None: existing.fecha_nacimiento = data.fecha_nacimiento
+        if data.curso is not None: existing.curso = data.curso
+        if data.division is not None: existing.division = data.division
+        if data.turno is not None: existing.turno = data.turno
+        existing.estado = estado_final
+        existing.estado_academico = estado_acad_final
+        alumno = existing
+    else:
+        alumno = Alumno(
+            dni=dni_clean,
+            nombre=data.nombre,
+            apellido=data.apellido,
+            folio=data.folio,
+            legajo=data.legajo,
+            telefono=data.telefono,
+            fecha_nacimiento=data.fecha_nacimiento,
+            curso=data.curso,
+            division=data.division,
+            turno=data.turno,
+            estado=estado_final,
+            estado_academico=estado_acad_final
+        )
+        db.add(alumno)
+        db.flush()
+        
     for h in data.historial:
         db.add(AlumnoHistorial(alumno_id=alumno.id, anio=h.anio, curso=h.curso, repitio=h.repitio, observaciones=h.observaciones))
     for f in data.familiares:
         db.add(FamiliarTutor(alumno_id=alumno.id, nombre=f.nombre, apellido=f.apellido, telefono=f.telefono, relacion=f.relacion))
-    db.commit(); db.refresh(alumno)
+    db.commit()
+    db.refresh(alumno)
     return alumno
 
 class AlumnoUpdate(BaseModel):
@@ -241,7 +287,7 @@ class AlumnoUpdate(BaseModel):
     familiares: Optional[list[FamiliarCreate]] = None
 
 @router.put("/{alumno_id}")
-def update_alumno(alumno_id: int, data: AlumnoUpdate, db: Session = Depends(get_db)):
+def update_alumno(alumno_id: int, data: AlumnoUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     alumno = db.query(Alumno).filter(Alumno.id == alumno_id).first()
     if not alumno:
         return {"error": "Alumno no encontrado"}
@@ -270,7 +316,7 @@ def update_alumno(alumno_id: int, data: AlumnoUpdate, db: Session = Depends(get_
     return alumno
 
 @router.delete("/{alumno_id}")
-def delete_alumno(alumno_id: int, db: Session = Depends(get_db)):
+def delete_alumno(alumno_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     alumno = db.query(Alumno).filter(Alumno.id == alumno_id).first()
     if alumno: db.delete(alumno); db.commit()
     return {"status": "ok"}
@@ -280,7 +326,7 @@ class AsignarCursoRequest(BaseModel):
     anio_lectivo: Optional[str] = "2026"
 
 @router.post("/{alumno_id}/asignar-curso")
-def asignar_curso(alumno_id: int, req: AsignarCursoRequest, db: Session = Depends(get_db)):
+def asignar_curso(alumno_id: int, req: AsignarCursoRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     alumno = db.query(Alumno).filter(Alumno.id == alumno_id).first()
     if not alumno:
         raise HTTPException(status_code=404, detail="Alumno no encontrado")
@@ -307,7 +353,7 @@ class GrupoTallerRequest(BaseModel):
     grupo_taller: Optional[str] = None
 
 @router.post("/{alumno_id}/grupo-taller")
-def set_grupo_taller(alumno_id: int, req: GrupoTallerRequest, db: Session = Depends(get_db)):
+def set_grupo_taller(alumno_id: int, req: GrupoTallerRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     alumno = db.query(Alumno).filter(Alumno.id == alumno_id).first()
     if not alumno:
         raise HTTPException(status_code=404, detail="Alumno no encontrado")
@@ -328,7 +374,7 @@ class AlumnosImportRequest(BaseModel):
     alumnos: list[AlumnoImportItem]
 
 @router.post("/importar")
-def importar_alumnos(req: AlumnosImportRequest, db: Session = Depends(get_db)):
+def importar_alumnos(req: AlumnosImportRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     imported = 0
     errors = []
     for item in req.alumnos:

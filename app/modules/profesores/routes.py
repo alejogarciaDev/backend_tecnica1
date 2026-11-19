@@ -38,7 +38,7 @@ def obtener_mi_perfil(db: Session = Depends(get_db), current_user = Depends(get_
     }
 
 @router.get("/")
-def listar_profesores(db: Session = Depends(get_db)):
+def listar_profesores(db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     profesores = db.query(Profesor).all()
     res = []
     for p in profesores:
@@ -56,7 +56,7 @@ def listar_profesores(db: Session = Depends(get_db)):
     return res
 
 @router.post("/")
-def crear_profesor(data: ProfesorCreate, db: Session = Depends(get_db)):
+def crear_profesor(data: ProfesorCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     existing = db.query(Profesor).filter(Profesor.dni == data.dni).first()
     if existing:
         raise HTTPException(status_code=400, detail="Ya existe un profesor con ese DNI")
@@ -76,7 +76,7 @@ def crear_profesor(data: ProfesorCreate, db: Session = Depends(get_db)):
     return profesor
 
 @router.put("/{profesor_id}/materias")
-def asignar_materias(profesor_id: int, data: AssignMaterias, db: Session = Depends(get_db)):
+def asignar_materias(profesor_id: int, data: AssignMaterias, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     profesor = db.query(Profesor).filter(Profesor.id == profesor_id).first()
     if not profesor:
         raise HTTPException(status_code=404, detail="Profesor no encontrado")

@@ -19,19 +19,11 @@ def create_user(
     target_role = db.query(Role).filter(Role.id == data.role_id).first()
     creator_role = (current_user.role.name if current_user.role else "").lower().strip()
 
-    if target_role and target_role.name == "alumno":
-        if creator_role == "admin":
-            raise HTTPException(
-                status_code=403,
-                detail="No autorizado. El rol Administrador no puede crear alumnos. Los alumnos deben ser pre-registrados exclusivamente desde Secretaría."
-            )
-
-    if target_role and target_role.name in ("admin", "superadmin"):
-        # Requiere que el creador sea superadmin
+    if target_role and target_role.name == "superadmin":
         if creator_role != "superadmin":
             raise HTTPException(
                 status_code=403, 
-                detail="No autorizado. Solo los Súper Administradores pueden crear usuarios administradores."
+                detail="No autorizado. Solo los Súper Administradores pueden crear otros Súper Administradores."
             )
             
     return service.create_user(db, data)

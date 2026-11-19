@@ -45,7 +45,7 @@ def registrar_asistencia_lote(data: AsistenciaLote, db: Session = Depends(get_db
     return {"status": "ok", "message": f"Se registraron {len(data.items)} asistencias."}
 
 @router.get("/curso/{curso_nombre}")
-def obtener_asistencias_curso(curso_nombre: str, db: Session = Depends(get_db)):
+def obtener_asistencias_curso(curso_nombre: str, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     from app.modules.academico.alumnos.models import AlumnoHistorial
     alumnos = db.query(Alumno).join(AlumnoHistorial).filter(AlumnoHistorial.curso == curso_nombre).all()
     alumno_ids = [a.id for a in alumnos]

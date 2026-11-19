@@ -8,7 +8,8 @@ from app.core.database import get_db
 from app.core.config import SECRET_KEY, ENV
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "525600"))
+# Tiempo de expiración de sesión por seguridad (por defecto 12 horas / 720 minutos, configurable por ENV)
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "720"))
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 def create_access_token(data: dict):
@@ -98,24 +99,11 @@ def require_permission(permission_name: str):
             if not any(permission_name.startswith(p) for p in allowed_alumno_prefixes):
                 raise HTTPException(status_code=403, detail="Acceso denegado. Los alumnos solo pueden acceder a sus propios módulos estudiantiles.")
                 
-        # 2. Admin cannot create or directly alter student academic onboarding
-        secretaria_restricted_perms = ("alumnos.create", "alumnos.pre_registro", "alumnos.delete", "alumnos.manage_academic", "secretaria.")
-        if any(permission_name.startswith(p) for p in secretaria_restricted_perms):
-            if user_role == "admin":
-                raise HTTPException(
-                    status_code=403, 
-                    detail="No autorizado. El rol Administrador no tiene permisos para crear alumnos ni administrar altas académicas. Esta función corresponde a Secretaría."
-                )
-
-        # 3. Superadmin bypasses other restrictions
-        if user_role == "superadmin":
-            return user
-            
-        # 4. Admin bypasses non-secretaria general permissions
-        if user_role == "admin":
+        # 2. Superadmin and Admin have full management access
+        if user_role in ("superadmin", "admin"):
             return user
 
-        # 5. Secretaria and oficina_alumnos roles are authorized for all secretaria.* and alumnos.* operations
+        # 3. Secretaria and oficina_alumnos roles are authorized for all secretaria.* and alumnos.* operations
         if (user_role in ("secretaria", "oficina_alumnos")) and (permission_name.startswith("secretaria.") or permission_name.startswith("alumnos.")):
             return user
 

@@ -6,15 +6,18 @@ class AlumnoPreRegistro(BaseModel):
     dni: str
     nombre: str
     apellido: str
-    fecha_nacimiento: str # DD/MM/AAAA or YYYY-MM-DD
-    curso: str # e.g. "5°"
-    division: str # e.g. "2°"
-    turno: str # Mañana, Tarde, Vespertino, Doble
-    estado_academico: Optional[str] = "REGULAR" # REGULAR, INACTIVO, EGRESADO, DADO_DE_BAJA
+    fecha_nacimiento: Optional[str] = "2008-01-01"
+    curso: Optional[str] = "1°"
+    division: Optional[str] = "1°"
+    curso_division: Optional[str] = None
+    turno: Optional[str] = "Mañana"
+    estado_academico: Optional[str] = "REGULAR"
     telefono: Optional[str] = None
     folio: Optional[str] = None
     legajo: Optional[str] = None
     grupo_taller: Optional[str] = None
+    correo_electronico: Optional[str] = None
+    estado_cuenta: Optional[str] = "ACTIVA"
 
 class AlumnoUpdateSecretaria(BaseModel):
     nombre: Optional[str] = None

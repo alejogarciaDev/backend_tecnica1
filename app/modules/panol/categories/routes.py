@@ -132,6 +132,10 @@ def delete_tool(tool_id: int, db: Session = Depends(get_db)):
 class AddStockRequest(BaseModel):
     quantity: int
 
+class RemoveStockRequest(BaseModel):
+    quantity: int
+    motivo: Optional[str] = "Rotura / Baja de taller"
+
 @router.post("/tools/{tool_id}/add-stock")
 @router.post("/tools/{tool_id}/add-stock/")
 def add_tool_stock(tool_id: int, data: AddStockRequest, db: Session = Depends(get_db)):
@@ -144,3 +148,19 @@ def add_tool_stock(tool_id: int, data: AddStockRequest, db: Session = Depends(ge
     db.commit()
     db.refresh(tool)
     return tool
+
+@router.post("/tools/{tool_id}/remove-stock")
+@router.post("/tools/{tool_id}/remove-stock/")
+def remove_tool_stock(tool_id: int, data: RemoveStockRequest, db: Session = Depends(get_db)):
+    tool = db.query(Tool).filter(Tool.id == tool_id).first()
+    if not tool:
+        raise HTTPException(status_code=404, detail="Herramienta no encontrada")
+    if data.quantity <= 0:
+        raise HTTPException(status_code=400, detail="La cantidad debe ser mayor a 0")
+    if data.quantity > tool.stock:
+        raise HTTPException(status_code=400, detail=f"No puede descontar {data.quantity} unidades (stock actual: {tool.stock})")
+    tool.stock -= data.quantity
+    db.commit()
+    db.refresh(tool)
+    return {"status": "ok", "stock": tool.stock, "motivo": data.motivo, "tool": {"id": tool.id, "name": tool.name, "stock": tool.stock}}
+

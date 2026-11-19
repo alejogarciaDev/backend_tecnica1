@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from .models import User
 from . import schemas
@@ -43,15 +44,36 @@ def create_user(db: Session, data: schemas.UserCreate):
     from app.core.supabase_sync import create_supabase_user
     from app.core.school_config import get_school_config
     from app.modules.schools.models import School
+    from app.modules.users.roles.models import Role
+
+    # 1. Validar correo duplicado
+    email_clean = data.email.strip().lower()
+    exist_user = db.query(User).filter(User.email.ilike(email_clean)).first()
+    if exist_user:
+        raise HTTPException(status_code=400, detail=f"El correo '{data.email}' ya está registrado en el sistema.")
+
+    # 2. Validar DNI duplicado si se ingresó
+    if data.dni and str(data.dni).strip():
+        dni_clean = str(data.dni).strip()
+        exist_dni = db.query(User).filter(User.dni == dni_clean).first()
+        if exist_dni:
+            raise HTTPException(status_code=400, detail=f"El DNI '{dni_clean}' ya pertenece a otro usuario registrado.")
+
+    # 3. Validar Rol
+    role = db.query(Role).filter(Role.id == data.role_id).first()
+    if not role:
+        role = db.query(Role).filter(Role.name == "profesor").first() or db.query(Role).first()
+        if not role:
+            raise HTTPException(status_code=400, detail=f"El rol especificado (ID {data.role_id}) no existe en la base de datos.")
+        data.role_id = role.id
+
+    role_name = role.name if role else "alumno"
+
     cfg = get_school_config()
     school = db.query(School).filter((School.domain == cfg.domain) | (School.name == cfg.name)).first()
     if not school:
         school = db.query(School).first()
     active_school_id = school.id if school else 2
-    
-    from app.modules.users.roles.models import Role
-    role = db.query(Role).filter(Role.id == data.role_id).first()
-    role_name = role.name if role else "alumno"
 
     supabase_uid = None
     try:
@@ -65,23 +87,46 @@ def create_user(db: Session, data: schemas.UserCreate):
         email=data.email, 
         password=hashed_pwd, 
         role_id=data.role_id, 
+        school_id=active_school_id,
         supabase_uid=supabase_uid, 
         dni=data.dni,
         account_status="ACTIVA",
         must_change_password=False
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    try:
+        db.commit()
+        db.refresh(user)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Error al registrar usuario en la base de datos: {str(e)}")
     
     if data.dashboards:
         _sync_user_dashboards(db, user, data.dashboards)
         db.commit()
         db.refresh(user)
+    else:
+        # Asignar dashboards por defecto acordes al rol
+        default_dash = ["perfil"]
+        if role_name in ("admin", "superadmin"):
+            default_dash = ["admin", "profesor", "panol", "ofalumnos", "biblioteca", "preceptor", "secretaria", "perfil"]
+        elif role_name == "profesor":
+            default_dash = ["profesor", "perfil"]
+        elif role_name == "preceptor":
+            default_dash = ["preceptor", "perfil"]
+        elif role_name == "panol":
+            default_dash = ["panol", "perfil"]
+        elif role_name in ("bibliotecario", "biblioteca"):
+            default_dash = ["biblioteca", "perfil"]
+        elif role_name in ("secretaria", "oficina_alumnos"):
+            default_dash = ["secretaria", "ofalumnos", "perfil"]
+        elif role_name == "alumno":
+            default_dash = ["alumno", "perfil"]
+        _sync_user_dashboards(db, user, default_dash)
+        db.commit()
+        db.refresh(user)
         
     # Check if role is profesor
-    from app.modules.users.roles.models import Role
-    role = db.query(Role).filter(Role.id == data.role_id).first()
     if role and role.name == "profesor":
         from app.modules.profesores.models import Profesor
         profesor = None
@@ -92,19 +137,27 @@ def create_user(db: Session, data: schemas.UserCreate):
             nombre = parts[0]
             apellido = parts[1] if len(parts) > 1 else "Docente"
             dni_val = data.dni or f"P-{user.id}"
-            profesor = Profesor(
-                dni=dni_val,
-                nombre=nombre,
-                apellido=apellido,
-                tipo=data.tipo or "aula",
-                user_id=user.id
-            )
-            db.add(profesor)
+            exist_prof_dni = db.query(Profesor).filter(Profesor.dni == dni_val).first()
+            if exist_prof_dni:
+                exist_prof_dni.user_id = user.id
+                profesor = exist_prof_dni
+            else:
+                profesor = Profesor(
+                    dni=dni_val,
+                    nombre=nombre,
+                    apellido=apellido,
+                    tipo=data.tipo or "aula",
+                    user_id=user.id
+                )
+                db.add(profesor)
         else:
             profesor.user_id = user.id
             if data.tipo is not None:
                 profesor.tipo = data.tipo
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
 
     # Auto-create Alumno in Oficina de Alumnos ONLY if role is explicitly 'alumno'
     if role and role.name and role.name.lower() == "alumno":
@@ -236,15 +289,68 @@ def update_user(db: Session, user_id: int, data: schemas.UserUpdate):
 def delete_user(db: Session, user_id: int):
     from app.core.supabase_sync import delete_supabase_user
     user = get_user_by_id(db, user_id)
-    if user:
-        if user.supabase_uid:
-            try:
-                delete_supabase_user(user.supabase_uid)
-            except Exception as e:
-                print(f"Error deleting user from Supabase: {e}")
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    if user.supabase_uid:
+        try:
+            delete_supabase_user(user.supabase_uid)
+        except Exception as e:
+            print(f"Error deleting user from Supabase: {e}")
+
+    try:
+        # 1. Limpiar permisos y dashboards
+        user.permissions = []
+        db.flush()
+
+        # 2. Desvincular de Cursos si era preceptor
+        try:
+            from app.modules.academico.cursos.models import Curso
+            cursos = db.query(Curso).filter(Curso.preceptor_principal_id == user.id).all()
+            for c in cursos:
+                c.preceptor_principal_id = None
+            db.flush()
+        except Exception:
+            pass
+
+        # 3. Desvincular de Profesores
+        try:
+            from app.modules.profesores.models import Profesor
+            profs = db.query(Profesor).filter(Profesor.user_id == user.id).all()
+            for p in profs:
+                p.user_id = None
+            db.flush()
+        except Exception:
+            pass
+
+        # 4. Desvincular de Alumnos
+        try:
+            from app.modules.academico.alumnos.models import Alumno
+            alums = db.query(Alumno).filter(Alumno.user_id == user.id).all()
+            for a in alums:
+                a.user_id = None
+            db.flush()
+        except Exception:
+            pass
+
+        # 5. Desvincular de Préstamos (Pañol)
+        try:
+            from app.modules.panol.loans.models import Loan
+            loans_panol = db.query(Loan).filter(Loan.panolero_id == user.id).all()
+            for lp in loans_panol:
+                lp.panolero_id = None
+            db.flush()
+        except Exception:
+            pass
+
+        # 6. Eliminar usuario
         db.delete(user)
         db.commit()
-    return user
+        return user
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"No se pudo eliminar el usuario porque tiene registros históricos asociados en el sistema ({str(e)}).")
 
 def change_role(db: Session, user_id: int, role_id: int):
     user = get_user_by_id(db, user_id)

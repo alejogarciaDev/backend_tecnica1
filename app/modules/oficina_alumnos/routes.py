@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.security import get_current_user_db
 from .models import Tramite
 from app.modules.academico.alumnos.models import Alumno
 from pydantic import BaseModel
@@ -19,7 +20,7 @@ class TramiteStatusUpdate(BaseModel):
     observaciones: Optional[str] = None
 
 @router.get("/tramites")
-def listar_tramites(db: Session = Depends(get_db)):
+def listar_tramites(db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     tramites = db.query(Tramite).all()
     res = []
     for t in tramites:
@@ -36,7 +37,7 @@ def listar_tramites(db: Session = Depends(get_db)):
     return res
 
 @router.post("/tramites")
-def crear_tramite(data: TramiteCreate, db: Session = Depends(get_db)):
+def crear_tramite(data: TramiteCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     alumno = db.query(Alumno).filter(Alumno.id == data.alumno_id).first()
     if not alumno:
         raise HTTPException(status_code=404, detail="Alumno no encontrado")
@@ -54,7 +55,7 @@ def crear_tramite(data: TramiteCreate, db: Session = Depends(get_db)):
     return tramite
 
 @router.put("/tramites/{tramite_id}/estado")
-def actualizar_estado_tramite(tramite_id: int, data: TramiteStatusUpdate, db: Session = Depends(get_db)):
+def actualizar_estado_tramite(tramite_id: int, data: TramiteStatusUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
     tramite = db.query(Tramite).filter(Tramite.id == tramite_id).first()
     if not tramite:
         raise HTTPException(status_code=404, detail="Trámite no encontrado")
