@@ -7,9 +7,15 @@ ENV = os.getenv("ENV", "dev")
 
 def get_files_path():
     cfg = get_school_config()
-    path = cfg.storage_path
+    path = os.getenv("STORAGE_PATH", getattr(cfg, "storage_path", "data/archivos"))
     if not os.path.isabs(path):
-        path = os.path.join(BASE_DIR, path)
+        if os.path.isdir("/app/data"):
+            # En entorno Docker usamos el volumen montado en /app/data
+            path = os.path.join("/app/data", os.path.basename(path))
+        else:
+            # Desarrollo local
+            project_root = os.path.dirname(BASE_DIR) if os.path.basename(BASE_DIR) == "app" else BASE_DIR
+            path = os.path.join(project_root, path)
     os.makedirs(path, exist_ok=True)
     return path
 

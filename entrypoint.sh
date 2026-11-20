@@ -8,6 +8,11 @@ echo "=========================================================="
 CONFIG_PATH="${SCHOOL_CONFIG_PATH:-config/school.default.yml}"
 APP_PORT="${PORT:-8001}"
 
+# Asegurar persistencia y compatibilidad de rutas de almacenamiento
+mkdir -p /app/data/archivos
+mkdir -p /app/app
+ln -sfn /app/data /app/app/data
+
 echo "[1/3] Configuración activa: ${CONFIG_PATH}"
 
 # Si la base de datos es PostgreSQL, esperar a que esté lista

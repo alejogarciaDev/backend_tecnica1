@@ -63,10 +63,26 @@ def get_file(archivo_id: int, inline: bool = False, db: Session = Depends(get_db
     archivo = db.query(Archivo).filter(Archivo.id == archivo_id).first()
     if not archivo:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
-    if not os.path.exists(archivo.ruta_archivo):
-        raise HTTPException(status_code=404, detail="Archivo físico no encontrado en el servidor")
+    
+    file_path = archivo.ruta_archivo
+    if not os.path.exists(file_path):
+        filename = os.path.basename(file_path)
+        candidates = [
+            os.path.join(get_files_path(), filename),
+            os.path.join("/app/data/archivos", filename),
+            os.path.join("/app/app/data/archivos", filename)
+        ]
+        found = False
+        for cand in candidates:
+            if os.path.exists(cand):
+                file_path = cand
+                found = True
+                break
+        if not found:
+            raise HTTPException(status_code=404, detail="Archivo físico no encontrado en el servidor")
+
     disposition = "inline" if inline else "attachment"
-    return FileResponse(archivo.ruta_archivo, media_type=archivo.tipo, filename=archivo.nombre_archivo, content_disposition_type=disposition)
+    return FileResponse(file_path, media_type=archivo.tipo, filename=archivo.nombre_archivo, content_disposition_type=disposition)
 
 @router.get("/view/{archivo_id}")
 def view_file_alias(archivo_id: int, db: Session = Depends(get_db)):
