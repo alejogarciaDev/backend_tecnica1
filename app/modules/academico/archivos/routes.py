@@ -59,7 +59,7 @@ def get_alumno_files(alumno_id: int, db: Session = Depends(get_db), current_user
     return db.query(Archivo).filter(Archivo.alumno_id == alumno_id).all()
 
 @router.get("/file/{archivo_id}")
-def get_file(archivo_id: int, inline: bool = False, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
+def get_file(archivo_id: int, inline: bool = False, db: Session = Depends(get_db)):
     archivo = db.query(Archivo).filter(Archivo.id == archivo_id).first()
     if not archivo:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
@@ -69,10 +69,10 @@ def get_file(archivo_id: int, inline: bool = False, db: Session = Depends(get_db
     return FileResponse(archivo.ruta_archivo, media_type=archivo.tipo, filename=archivo.nombre_archivo, content_disposition_type=disposition)
 
 @router.get("/view/{archivo_id}")
-def view_file_alias(archivo_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
-    return get_file(archivo_id, inline=True, db=db, current_user=current_user)
+def view_file_alias(archivo_id: int, db: Session = Depends(get_db)):
+    return get_file(archivo_id, inline=True, db=db)
 
 @router.get("/descargar/{archivo_id}")
-def descargar_file_alias(archivo_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
-    return get_file(archivo_id, inline=False, db=db, current_user=current_user)
+def descargar_file_alias(archivo_id: int, db: Session = Depends(get_db)):
+    return get_file(archivo_id, inline=False, db=db)
 
