@@ -312,10 +312,12 @@ def delete_user(db: Session, user_id: int):
         db.execute(text("UPDATE profesores SET user_id = NULL WHERE user_id = :uid"), {"uid": uid})
         db.execute(text("UPDATE alumnos SET user_id = NULL WHERE user_id = :uid"), {"uid": uid})
         
-        # 3. Desvincular de Pañol y Biblioteca
+        # 3. Desvincular de Pañol y Biblioteca (cuidando dependencias de órdenes y préstamos)
+        db.execute(text("UPDATE loans SET order_id = NULL WHERE order_id IN (SELECT id FROM orders WHERE user_id = :uid)"), {"uid": uid})
+        db.execute(text("DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE user_id = :uid)"), {"uid": uid})
         db.execute(text("UPDATE loans SET panolero_id = NULL WHERE panolero_id = :uid"), {"uid": uid})
-        db.execute(text("DELETE FROM orders WHERE user_id = :uid"), {"uid": uid})
         db.execute(text("DELETE FROM loans WHERE user_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM orders WHERE user_id = :uid"), {"uid": uid})
         db.execute(text("DELETE FROM prestamos_libros WHERE user_id = :uid"), {"uid": uid})
         
         # 4. Desvincular de registros académicos y campus
