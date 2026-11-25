@@ -92,3 +92,20 @@ def view_file_alias(archivo_id: int, db: Session = Depends(get_db)):
 def descargar_file_alias(archivo_id: int, db: Session = Depends(get_db)):
     return get_file(archivo_id, inline=False, db=db)
 
+@router.delete("/{archivo_id}")
+def delete_file(archivo_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
+    archivo = db.query(Archivo).filter(Archivo.id == archivo_id).first()
+    if not archivo:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    
+    # Intentar eliminar archivo físico del disco si existe
+    if archivo.ruta_archivo and os.path.exists(archivo.ruta_archivo):
+        try:
+            os.remove(archivo.ruta_archivo)
+        except Exception:
+            pass
+            
+    db.delete(archivo)
+    db.commit()
+    return {"detail": "Archivo eliminado correctamente", "id": archivo_id}
+
