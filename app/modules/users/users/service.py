@@ -288,6 +288,7 @@ def update_user(db: Session, user_id: int, data: schemas.UserUpdate):
 
 def delete_user(db: Session, user_id: int):
     from app.core.supabase_sync import delete_supabase_user
+    from sqlalchemy import text
     user = get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
@@ -299,49 +300,41 @@ def delete_user(db: Session, user_id: int):
             print(f"Error deleting user from Supabase: {e}")
 
     try:
-        # 1. Limpiar permisos y dashboards
-        user.permissions = []
+        uid = user.id
+        # 1. Limpiar notificaciones, permisos y logs del usuario
+        db.execute(text("DELETE FROM notifications WHERE user_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM user_permissions WHERE user_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM audit_logs WHERE user_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM olimpiadas_inscripciones WHERE user_id = :uid"), {"uid": uid})
+        
+        # 2. Desvincular de Cursos y Roles
+        db.execute(text("UPDATE cursos SET preceptor_principal_id = NULL WHERE preceptor_principal_id = :uid"), {"uid": uid})
+        db.execute(text("UPDATE profesores SET user_id = NULL WHERE user_id = :uid"), {"uid": uid})
+        db.execute(text("UPDATE alumnos SET user_id = NULL WHERE user_id = :uid"), {"uid": uid})
+        
+        # 3. Desvincular de Pañol y Biblioteca
+        db.execute(text("UPDATE loans SET panolero_id = NULL WHERE panolero_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM orders WHERE user_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM loans WHERE user_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM prestamos_libros WHERE user_id = :uid"), {"uid": uid})
+        
+        # 4. Desvincular de registros académicos y campus
+        db.execute(text("UPDATE asistencias SET registrado_por_id = NULL WHERE registrado_por_id = :uid"), {"uid": uid})
+        db.execute(text("UPDATE calificaciones_academicas SET profesor_id = NULL WHERE profesor_id = :uid"), {"uid": uid})
+        db.execute(text("UPDATE calificaciones_academicas SET aprobado_por_id = NULL WHERE aprobado_por_id = :uid"), {"uid": uid})
+        db.execute(text("UPDATE boletines_publicados SET publicado_por_id = NULL WHERE publicado_por_id = :uid"), {"uid": uid})
+        
+        # 5. Limpiar registros de campus/comunicados
+        db.execute(text("DELETE FROM comunicados_comentarios WHERE autor_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM comunicados WHERE autor_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM entregas_comentarios WHERE autor_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM documentos_compartidos WHERE creador_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM evaluaciones WHERE profesor_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM tareas WHERE profesor_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM materiales_estudio WHERE profesor_id = :uid"), {"uid": uid})
+        db.execute(text("DELETE FROM calificaciones WHERE profesor_id = :uid"), {"uid": uid})
+        
         db.flush()
-
-        # 2. Desvincular de Cursos si era preceptor
-        try:
-            from app.modules.academico.cursos.models import Curso
-            cursos = db.query(Curso).filter(Curso.preceptor_principal_id == user.id).all()
-            for c in cursos:
-                c.preceptor_principal_id = None
-            db.flush()
-        except Exception:
-            pass
-
-        # 3. Desvincular de Profesores
-        try:
-            from app.modules.profesores.models import Profesor
-            profs = db.query(Profesor).filter(Profesor.user_id == user.id).all()
-            for p in profs:
-                p.user_id = None
-            db.flush()
-        except Exception:
-            pass
-
-        # 4. Desvincular de Alumnos
-        try:
-            from app.modules.academico.alumnos.models import Alumno
-            alums = db.query(Alumno).filter(Alumno.user_id == user.id).all()
-            for a in alums:
-                a.user_id = None
-            db.flush()
-        except Exception:
-            pass
-
-        # 5. Desvincular de Préstamos (Pañol)
-        try:
-            from app.modules.panol.loans.models import Loan
-            loans_panol = db.query(Loan).filter(Loan.panolero_id == user.id).all()
-            for lp in loans_panol:
-                lp.panolero_id = None
-            db.flush()
-        except Exception:
-            pass
 
         # 6. Eliminar usuario
         db.delete(user)
@@ -350,7 +343,7 @@ def delete_user(db: Session, user_id: int):
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=f"No se pudo eliminar el usuario porque tiene registros históricos asociados en el sistema ({str(e)}).")
+        raise HTTPException(status_code=400, detail=f"No se pudo eliminar el usuario: {str(e)}")
 
 def change_role(db: Session, user_id: int, role_id: int):
     user = get_user_by_id(db, user_id)

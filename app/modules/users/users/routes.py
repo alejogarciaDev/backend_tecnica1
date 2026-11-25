@@ -37,7 +37,14 @@ def get_user(user_id: int, db: Session = Depends(get_db), _=Depends(require_perm
     return service.get_user_by_id(db, user_id)
 
 @router.delete("/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db), _=Depends(require_permission("users.delete"))):
+def delete_user(
+    user_id: int, 
+    db: Session = Depends(get_db), 
+    _ = Depends(require_permission("users.delete")),
+    current_user = Depends(get_current_user_db)
+):
+    if current_user.id == user_id:
+        raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta de usuario en sesión.")
     return service.delete_user(db, user_id)
 
 @router.put("/{user_id}/role")
