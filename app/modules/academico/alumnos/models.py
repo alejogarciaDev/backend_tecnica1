@@ -23,6 +23,12 @@ class Alumno(Base):
     estado_cuenta = Column(String, default="SIN_ACTIVAR") # SIN_ACTIVAR, ACTIVACION_PENDIENTE, ACTIVA, BLOQUEADA
     estado_identidad = Column(String, default="NO_VERIFICADA") # NO_VERIFICADA, EN_VERIFICACION, VERIFICADA, RECHAZADA
     
+    # Datos de control de nivel primario
+    primaria_completa = Column(Boolean, default=False, nullable=True)
+    primaria_fecha = Column(String, nullable=True) # Fecha o año de finalización
+    primaria_escuela = Column(String, nullable=True) # Escuela de origen
+    primaria_localidad = Column(String, nullable=True) # Localidad o provincia
+
     user = relationship("User", backref="alumno_profile")
     school = relationship("School", backref="alumnos")
     historial = relationship("AlumnoHistorial", back_populates="alumno", cascade="all, delete-orphan", order_by="AlumnoHistorial.anio")

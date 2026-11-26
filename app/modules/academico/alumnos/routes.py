@@ -57,8 +57,13 @@ class AlumnoCreate(BaseModel):
     curso: Optional[str] = None
     division: Optional[str] = None
     turno: Optional[str] = None
+    grupo_taller: Optional[str] = None
     estado: Optional[str] = "Activo"
     estado_academico: Optional[str] = "REGULAR"
+    primaria_completa: Optional[bool] = False
+    primaria_fecha: Optional[str] = None
+    primaria_escuela: Optional[str] = None
+    primaria_localidad: Optional[str] = None
     historial: list[HistorialCreate] = []
     familiares: list[FamiliarCreate] = []
 
@@ -283,6 +288,10 @@ def format_alumno_detail(alumno: Alumno, db: Session):
         "grupo_taller": alumno.grupo_taller or "",
         "estado": alumno.estado or "Activo",
         "estado_academico": alumno.estado_academico or "REGULAR",
+        "primaria_completa": bool(alumno.primaria_completa),
+        "primaria_fecha": alumno.primaria_fecha or "",
+        "primaria_escuela": alumno.primaria_escuela or "",
+        "primaria_localidad": alumno.primaria_localidad or "",
         "email": user_obj.email if user_obj else "",
         "domicilio": user_obj.domicilio if user_obj else "",
         "historial": hist,
@@ -318,6 +327,11 @@ def create_alumno(data: AlumnoCreate, db: Session = Depends(get_db), current_use
         if data.curso is not None: existing.curso = data.curso
         if data.division is not None: existing.division = data.division
         if data.turno is not None: existing.turno = data.turno
+        if data.grupo_taller is not None: existing.grupo_taller = data.grupo_taller
+        if data.primaria_completa is not None: existing.primaria_completa = data.primaria_completa
+        if data.primaria_fecha is not None: existing.primaria_fecha = data.primaria_fecha
+        if data.primaria_escuela is not None: existing.primaria_escuela = data.primaria_escuela
+        if data.primaria_localidad is not None: existing.primaria_localidad = data.primaria_localidad
         existing.estado = estado_final
         existing.estado_academico = estado_acad_final
         alumno = existing
@@ -333,8 +347,13 @@ def create_alumno(data: AlumnoCreate, db: Session = Depends(get_db), current_use
             curso=data.curso,
             division=data.division,
             turno=data.turno,
+            grupo_taller=data.grupo_taller,
             estado=estado_final,
-            estado_academico=estado_acad_final
+            estado_academico=estado_acad_final,
+            primaria_completa=data.primaria_completa or False,
+            primaria_fecha=data.primaria_fecha,
+            primaria_escuela=data.primaria_escuela,
+            primaria_localidad=data.primaria_localidad
         )
         db.add(alumno)
         db.flush()
@@ -345,7 +364,7 @@ def create_alumno(data: AlumnoCreate, db: Session = Depends(get_db), current_use
         db.add(FamiliarTutor(alumno_id=alumno.id, nombre=f.nombre, apellido=f.apellido, telefono=f.telefono, relacion=f.relacion))
     db.commit()
     db.refresh(alumno)
-    return alumno
+    return format_alumno_detail(alumno, db)
 
 class AlumnoUpdate(BaseModel):
     dni: Optional[str] = None
@@ -361,6 +380,10 @@ class AlumnoUpdate(BaseModel):
     grupo_taller: Optional[str] = None
     estado: Optional[str] = None
     estado_academico: Optional[str] = None
+    primaria_completa: Optional[bool] = None
+    primaria_fecha: Optional[str] = None
+    primaria_escuela: Optional[str] = None
+    primaria_localidad: Optional[str] = None
     email: Optional[str] = None
     domicilio: Optional[str] = None
     historial: Optional[list[HistorialCreate]] = None
@@ -397,6 +420,10 @@ def update_alumno(alumno_id: str, data: AlumnoUpdate, db: Session = Depends(get_
     if data.grupo_taller is not None: alumno.grupo_taller = data.grupo_taller.strip()
     if data.estado is not None: alumno.estado = data.estado.strip()
     if data.estado_academico is not None: alumno.estado_academico = data.estado_academico.strip()
+    if data.primaria_completa is not None: alumno.primaria_completa = data.primaria_completa
+    if data.primaria_fecha is not None: alumno.primaria_fecha = data.primaria_fecha.strip()
+    if data.primaria_escuela is not None: alumno.primaria_escuela = data.primaria_escuela.strip()
+    if data.primaria_localidad is not None: alumno.primaria_localidad = data.primaria_localidad.strip()
 
     # Sincronizar usuario vinculado si existe
     user_obj = alumno.user
