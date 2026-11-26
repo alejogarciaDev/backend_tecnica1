@@ -225,9 +225,80 @@ def list_alumnos(anio: Optional[str] = None, tipo: Optional[str] = None, db: Ses
         })
     return res
 
+def format_alumno_detail(alumno: Alumno, db: Session):
+    user_obj = alumno.user
+    if not user_obj and alumno.user_id:
+        from app.modules.users.users.models import User
+        user_obj = db.query(User).filter(User.id == alumno.user_id).first()
+    if not user_obj and alumno.dni:
+        from app.modules.users.users.models import User
+        user_obj = db.query(User).filter(User.dni == alumno.dni).first()
+
+    hist = []
+    for h in (alumno.historial or []):
+        hist.append({
+            "id": h.id,
+            "anio": h.anio,
+            "curso": h.curso,
+            "repitio": h.repitio,
+            "observaciones": h.observaciones
+        })
+
+    fams = []
+    for f in (alumno.familiares or []):
+        fams.append({
+            "id": f.id,
+            "nombre": f.nombre,
+            "apellido": f.apellido,
+            "telefono": f.telefono,
+            "relacion": f.relacion
+        })
+
+    curso_display = (alumno.curso or "").strip()
+    if alumno.division:
+        curso_display = f"{curso_display} {alumno.division}".strip()
+    if not curso_display and hist:
+        curso_display = hist[-1]["curso"]
+
+    nom = alumno.nombre
+    ape = alumno.apellido
+    if (not nom or nom.strip() in ("", "null", "None")) and user_obj and user_obj.name:
+        parts = user_obj.name.strip().split(" ", 1)
+        nom = parts[0]
+        ape = parts[1] if len(parts) > 1 else ""
+
+    return {
+        "id": alumno.id,
+        "dni": alumno.dni or (user_obj.dni if user_obj else "") or "",
+        "nombre": nom or "",
+        "apellido": ape or "",
+        "folio": alumno.folio or "",
+        "legajo": alumno.legajo or "",
+        "telefono": alumno.telefono or "",
+        "fecha_nacimiento": alumno.fecha_nacimiento or (user_obj.fecha_nacimiento if user_obj else "") or "",
+        "curso": alumno.curso or "",
+        "division": alumno.division or "",
+        "curso_division": curso_display,
+        "turno": alumno.turno or "",
+        "grupo_taller": alumno.grupo_taller or "",
+        "estado": alumno.estado or "Activo",
+        "estado_academico": alumno.estado_academico or "REGULAR",
+        "email": user_obj.email if user_obj else "",
+        "domicilio": user_obj.domicilio if user_obj else "",
+        "historial": hist,
+        "familiares": fams,
+        "user_id": alumno.user_id
+    }
+
 @router.get("/{dni}")
 def get_alumno(dni: str, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
-    return db.query(Alumno).filter(Alumno.dni == dni).first()
+    dni_clean = str(dni).strip()
+    alumno = db.query(Alumno).filter((Alumno.dni == dni_clean) | (Alumno.dni == dni_clean.zfill(8))).first()
+    if not alumno and dni_clean.isdigit():
+        alumno = db.query(Alumno).filter(Alumno.id == int(dni_clean)).first()
+    if not alumno:
+        raise HTTPException(status_code=404, detail=f"No se encontró ningún alumno registrado con DNI o ID '{dni_clean}'")
+    return format_alumno_detail(alumno, db)
 
 @router.post("/")
 def create_alumno(data: AlumnoCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
@@ -283,37 +354,92 @@ class AlumnoUpdate(BaseModel):
     folio: Optional[str] = None
     legajo: Optional[str] = None
     telefono: Optional[str] = None
+    fecha_nacimiento: Optional[str] = None
+    curso: Optional[str] = None
+    division: Optional[str] = None
+    turno: Optional[str] = None
+    grupo_taller: Optional[str] = None
+    estado: Optional[str] = None
+    estado_academico: Optional[str] = None
+    email: Optional[str] = None
+    domicilio: Optional[str] = None
     historial: Optional[list[HistorialCreate]] = None
     familiares: Optional[list[FamiliarCreate]] = None
 
 @router.put("/{alumno_id}")
-def update_alumno(alumno_id: int, data: AlumnoUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
-    alumno = db.query(Alumno).filter(Alumno.id == alumno_id).first()
+def update_alumno(alumno_id: str, data: AlumnoUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):
+    ident_str = str(alumno_id).strip()
+    alumno = None
+    if ident_str.isdigit():
+        alumno = db.query(Alumno).filter((Alumno.id == int(ident_str)) | (Alumno.dni == ident_str)).first()
+    else:
+        alumno = db.query(Alumno).filter(Alumno.dni == ident_str).first()
+
     if not alumno:
-        return {"error": "Alumno no encontrado"}
-    if data.dni is not None:
-        alumno.dni = data.dni
-    if data.nombre is not None:
-        alumno.nombre = data.nombre
-    if data.apellido is not None:
-        alumno.apellido = data.apellido
-    if data.folio is not None:
-        alumno.folio = data.folio
-    if data.legajo is not None:
-        alumno.legajo = data.legajo
-    if data.telefono is not None:
-        alumno.telefono = data.telefono
+        raise HTTPException(status_code=404, detail="Alumno no encontrado")
+
+    if data.dni is not None and data.dni.strip():
+        new_dni = data.dni.strip()
+        exist = db.query(Alumno).filter(Alumno.dni == new_dni, Alumno.id != alumno.id).first()
+        if exist:
+            raise HTTPException(status_code=400, detail=f"El DNI {new_dni} ya pertenece a otro alumno.")
+        alumno.dni = new_dni
+
+    if data.nombre is not None: alumno.nombre = data.nombre.strip()
+    if data.apellido is not None: alumno.apellido = data.apellido.strip()
+    if data.folio is not None: alumno.folio = data.folio.strip()
+    if data.legajo is not None: alumno.legajo = data.legajo.strip()
+    if data.telefono is not None: alumno.telefono = data.telefono.strip()
+    if data.fecha_nacimiento is not None: alumno.fecha_nacimiento = data.fecha_nacimiento.strip()
+    if data.curso is not None: alumno.curso = data.curso.strip()
+    if data.division is not None: alumno.division = data.division.strip()
+    if data.turno is not None: alumno.turno = data.turno.strip()
+    if data.grupo_taller is not None: alumno.grupo_taller = data.grupo_taller.strip()
+    if data.estado is not None: alumno.estado = data.estado.strip()
+    if data.estado_academico is not None: alumno.estado_academico = data.estado_academico.strip()
+
+    # Sincronizar usuario vinculado si existe
+    user_obj = alumno.user
+    if not user_obj and alumno.user_id:
+        from app.modules.users.users.models import User
+        user_obj = db.query(User).filter(User.id == alumno.user_id).first()
+    if not user_obj and alumno.dni:
+        from app.modules.users.users.models import User
+        user_obj = db.query(User).filter(User.dni == alumno.dni).first()
+
+    if user_obj:
+        if data.dni is not None and data.dni.strip():
+            user_obj.dni = data.dni.strip()
+        if data.nombre is not None or data.apellido is not None:
+            user_obj.name = f"{alumno.nombre} {alumno.apellido}".strip()
+        if data.email is not None and data.email.strip():
+            user_obj.email = data.email.strip().lower()
+        if data.domicilio is not None:
+            user_obj.domicilio = data.domicilio.strip()
+        if data.fecha_nacimiento is not None:
+            user_obj.fecha_nacimiento = data.fecha_nacimiento.strip()
+
+    if data.curso is not None:
+        curso_full = f"{alumno.curso} {alumno.division or ''}".strip()
+        hist = db.query(AlumnoHistorial).filter(AlumnoHistorial.alumno_id == alumno.id, AlumnoHistorial.anio == "2026").first()
+        if hist:
+            hist.curso = curso_full
+        else:
+            db.add(AlumnoHistorial(alumno_id=alumno.id, anio="2026", curso=curso_full))
+
     if data.historial is not None:
         db.query(AlumnoHistorial).filter(AlumnoHistorial.alumno_id == alumno.id).delete()
         for h in data.historial:
             db.add(AlumnoHistorial(alumno_id=alumno.id, anio=h.anio, curso=h.curso, repitio=h.repitio, observaciones=h.observaciones))
+
     if data.familiares is not None:
         db.query(FamiliarTutor).filter(FamiliarTutor.alumno_id == alumno.id).delete()
         for f in data.familiares:
             db.add(FamiliarTutor(alumno_id=alumno.id, nombre=f.nombre, apellido=f.apellido, telefono=f.telefono, relacion=f.relacion))
+
     db.commit()
     db.refresh(alumno)
-    return alumno
+    return format_alumno_detail(alumno, db)
 
 @router.delete("/{alumno_id}")
 def delete_alumno(alumno_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user_db)):

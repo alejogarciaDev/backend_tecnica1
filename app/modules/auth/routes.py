@@ -232,7 +232,8 @@ def get_me(user=Depends(get_current_user_db)):
         "dni": user.dni,
         "domicilio": user.domicilio,
         "fecha_nacimiento": user.fecha_nacimiento,
-        "accepted_terms": user.accepted_terms
+        "accepted_terms": user.accepted_terms,
+        "must_change_password": bool(user.must_change_password)
     }
 
 class UpdateProfileRequest(BaseModel):

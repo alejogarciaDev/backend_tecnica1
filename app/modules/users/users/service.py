@@ -75,13 +75,24 @@ def create_user(db: Session, data: schemas.UserCreate):
         school = db.query(School).first()
     active_school_id = school.id if school else 2
 
+    # Manejo de contraseña inicial por defecto: Si no se ingresa contraseña, se utiliza su DNI
+    raw_pwd = (data.password or "").strip()
+    must_change = False
+    if not raw_pwd:
+        if data.dni and str(data.dni).strip():
+            raw_pwd = str(data.dni).strip()
+            must_change = True
+        else:
+            raw_pwd = "123456"
+            must_change = True
+
     supabase_uid = None
     try:
-        supabase_uid = create_supabase_user(data.email, data.password, name=data.name, school_id=active_school_id, role=role_name, dni=data.dni)
+        supabase_uid = create_supabase_user(data.email, raw_pwd, name=data.name, school_id=active_school_id, role=role_name, dni=data.dni)
     except Exception as e:
         print(f"Supabase user creation failed (non-fatal): {e}")
 
-    hashed_pwd = hash_password(data.password)
+    hashed_pwd = hash_password(raw_pwd)
     user = User(
         name=data.name, 
         email=data.email, 
@@ -91,7 +102,7 @@ def create_user(db: Session, data: schemas.UserCreate):
         supabase_uid=supabase_uid, 
         dni=data.dni,
         account_status="ACTIVA",
-        must_change_password=False
+        must_change_password=must_change
     )
     db.add(user)
     try:
@@ -223,6 +234,7 @@ def update_user(db: Session, user_id: int, data: schemas.UserUpdate):
         user.email = data.email
     if data.password is not None and data.password.strip():
         user.password = hash_password(data.password.strip())
+        user.must_change_password = False
     if data.role_id is not None:
         user.role_id = data.role_id
     if data.dni is not None:

@@ -4,7 +4,7 @@ from typing import Optional, List
 class UserCreate(BaseModel):
     name: str
     email: str
-    password: str
+    password: Optional[str] = None
     role_id: int
     dni: Optional[str] = None
     tipo: Optional[str] = "aula" # "aula" or "taller"
@@ -28,5 +28,6 @@ class UserOut(BaseModel):
     dni: Optional[str] = None
     tipo: Optional[str] = None
     dashboards: List[str] = []
+    must_change_password: Optional[bool] = False
     class Config:
         from_attributes = True

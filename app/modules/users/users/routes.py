@@ -69,5 +69,19 @@ def change_role(
     return service.change_role(db, user_id, role_id)
 
 @router.put("/{user_id}", response_model=schemas.UserOut)
-def update_user(user_id: int, data: schemas.UserUpdate, db: Session = Depends(get_db), _=Depends(require_permission("users.update"))):
+def update_user(
+    user_id: int, 
+    data: schemas.UserUpdate, 
+    db: Session = Depends(get_db), 
+    _ = Depends(require_permission("users.update")),
+    current_user = Depends(get_current_user_db)
+):
+    if data.role_id is not None:
+        target_role = db.query(Role).filter(Role.id == data.role_id).first()
+        creator_role = (current_user.role.name if current_user.role else "").lower().strip()
+        if target_role and target_role.name == "superadmin" and creator_role != "superadmin":
+            raise HTTPException(
+                status_code=403, 
+                detail="No autorizado. Solo los Súper Administradores pueden asignar el rol Superadministrador."
+            )
     return service.update_user(db, user_id, data)
